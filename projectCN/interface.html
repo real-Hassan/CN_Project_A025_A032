@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CENTIPEDE // PACKET SNIFFER</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+:root {
+  --g:   #00ff41;
+  --gd:  #00cc33;
+  --gf:  #007020;
+  --gx:  #003810;
+  --bg0: #020402;
+  --bg1: #060906;
+  --bg2: #0a0f0a;
+  --bg3: #0f160f;
+  --bdr: #0d1a0d;
+  --bdr2:#162816;
+  --dim: #3a7a3a;
+  --mid: #5aaa5a;
+  --tcp: #38bdf8;
+  --udp: #fbbf24;
+  --icmp:#f87171;
+  --oth: #94a3b8;
+  --red: #ef4444;
+  --ok:  #22c55e;
+  --bad: #ef4444;
+  --wht: #d4ffd4;
+
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-disp: 'Bebas Neue', sans-serif;
+
+  --scan: repeating-linear-gradient(
+    0deg, transparent, transparent 3px,
+    rgba(0,0,0,0.06) 3px, rgba(0,0,0,0.06) 4px
+  );
+  --noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg0);
+  color: var(--g);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background-image: var(--scan), var(--noise);
+  cursor: default;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg1); }
+::-webkit-scrollbar-thumb { background: var(--gx); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--gf); }
+
+.glow-g   { text-shadow: 0 0 8px var(--g),   0 0 20px rgba(0,255,65,0.4); }
+.glow-tcp { text-shadow: 0 0 8px var(--tcp), 0 0 20px rgba(56,189,248,0.4); }
+.glow-udp { text-shadow: 0 0 8px var(--udp), 0 0 20px rgba(251,191,36,0.4); }
+.glow-icmp{ text-shadow: 0 0 8px var(--icmp),0 0 20px rgba(248,113,113,0.4); }
+
+#topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 38px;
+  border-bottom: 1px solid var(--bdr2);
+  background: var(--bg1);
+  position: relative;
+  overflow: hidden;
+}
+
+#topbar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,255,65,0.04) 50%, transparent 100%);
+  width: 60%;
+  animation: sweep 4s linear infinite;
+  pointer-events: none;
+}
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(250%); }
+}
+
+#logo {
+  font-family: var(--font-disp);
+  font-size: 22px;
+  letter-spacing: 4px;
+  color: var(--g);
+  text-shadow: 0 0 14px var(--g), 0 0 40px rgba(0,255,65,0.3);
+  padding: 0 20px;
+  border-right: 1px solid var(--bdr2);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#logo em { color: var(--wht); font-style: normal; }
+
+.topbar-group {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 16px;
+  border-right: 1px solid var(--bdr2);
+  gap: 6px;
+  flex-shrink: 0;
+}
+.topbar-label { font-size: 8px; letter-spacing: 2px; color: var(--dim); }
+.topbar-val   { font-size: 10px; color: var(--gd); font-weight: 700; }
+
+#ws-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 6px var(--red);
+  flex-shrink: 0;
+  transition: all 0.4s;
+}
+#ws-dot.live { background: var(--g); box-shadow: 0 0 8px var(--g); animation: pulse-dot 2s infinite; }
+@keyframes pulse-dot {
+  0%,100% { box-shadow: 0 0 6px var(--g); }
+  50%      { box-shadow: 0 0 14px var(--g), 0 0 28px rgba(0,255,65,0.4); }
+}
+
+#ws-label {
+  font-family: var(--font-disp);
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--dim);
+  transition: color 0.4s;
+}
+#ws-label.live { color: var(--g); }
+
+#clock-block {
+  margin-left: auto;
+  padding: 0 16px;
+  text-align: right;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-left: 1px solid var(--bdr2);
+  flex-shrink: 0;
+}
+#clock-time { font-family: var(--font-disp); font-size: 18px; color: var(--mid); letter-spacing: 2px; line-height: 1; }
+#clock-date { font-size: 8px; color: var(--dim); letter-spacing: 1px; margin-top: 2px; }
+
+#toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--bdr);
+  background: var(--bg0);
+}
+
+.btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border: 1px solid var(--gf);
+  background: transparent;
+  color: var(--gd);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.btn:hover { background: rgba(0,255,65,0.08); border-color: var(--gd); color: var(--g); }
+.btn.primary { border-color: var(--g); color: var(--g); }
+.btn.primary:hover { background: rgba(0,255,65,0.15); box-shadow: 0 0 12px rgba(0,255,65,0.25); }
+.btn.danger  { border-color: var(--red); color: var(--red); }
+.btn.danger:hover  { background: rgba(239,68,68,0.1); }
+.btn.caution { border-color: var(--udp); color: var(--udp); }
+.btn.caution:hover { background: rgba(251,191,36,0.1); }
+
+.btn-icon { font-size: 12px; }
+
+/* Filter UI Styles */
+.filter-group {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.filter-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--dim);
+  font-weight: 700;
+}
+.filter-input {
+  background: var(--bg1);
+  border: 1px solid var(--bdr2);
+  color: var(--g);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  width: 280px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.filter-input:focus { border-color: var(--gf); }
+.filter-input::placeholder { color: var(--dim); opacity: 0.5; }
+
+#stats {
+  flex-shrink: 0;
+  display: flex;
+  border-bottom: 1px solid var(--bdr2);
+  background: var(--bg1);
+}
+
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 7px 16px;
+  border-right: 1px solid var(--bdr);
+  gap: 1px;
+  overflow: hidden;
+}
+.stat:last-child { border-right: none; }
+.stat-lbl { font-size: 8px; letter-spacing: 2px; color: var(--dim); }
+.stat-val {
+  font-family: var(--font-disp);
+  font-size: 26px;
+  line-height: 1;
+  transition: all 0.2s;
+}
+.stat-val.c-g    { color: var(--g);    text-shadow: 0 0 10px rgba(0,255,65,0.5); }
+.stat-val.c-tcp  { color: var(--tcp);  text-shadow: 0 0 10px rgba(56,189,248,0.5); }
+.stat-val.c-udp  { color: var(--udp);  text-shadow: 0 0 10px rgba(251,191,36,0.5); }
+.stat-val.c-icmp { color: var(--icmp); text-shadow: 0 0 10px rgba(248,113,113,0.5); }
+.stat-val.c-wht  { color: var(--wht);  text-shadow: 0 0 10px rgba(212,255,212,0.3); }
+
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#tbl-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+col.col-no   { width: 52px; }
+col.col-time { width: 70px; }
+col.col-src  { width: 160px; }
+col.col-dst  { width: 160px; }
+col.col-prot { width: 64px; }
+col.col-sp   { width: 68px; }
+col.col-dp   { width: 68px; }
+col.col-len  { width: 64px; }
+col.col-chk  { width: auto; }
+
+thead th {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--bg0);
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: var(--dim);
+  border-bottom: 1px solid var(--gf);
+  border-right: 1px solid var(--bdr);
+  user-select: none;
+  font-weight: 400;
+}
+thead th:last-child { border-right: none; }
+
+tbody tr {
+  border-bottom: 1px solid var(--bdr);
+  cursor: pointer;
+  transition: background 0.07s;
+}
+tbody tr:nth-child(even) { background: var(--bg1); }
+tbody tr:hover  { background: rgba(0,255,65,0.05); }
+tbody tr.sel    { background: rgba(0,255,65,0.1) !important; outline: 1px solid var(--gf); outline-offset: -1px; }
+
+tbody td {
+  padding: 5px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-right: 1px solid var(--bdr);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+tbody td:last-child { border-right: none; }
+
+.td-no   { color: var(--dim); font-size: 9px; }
+.td-time { color: var(--mid); }
+.td-src  { color: var(--g);   }
+.td-dst  { color: var(--gd);  }
+.td-port { color: var(--mid); font-size: 10px; }
+.td-len  { color: var(--mid); font-size: 10px; }
+
+.chk-ok  { color: var(--ok);  font-size: 9px; font-weight: 700; }
+.chk-bad { color: var(--bad); font-size: 9px; font-weight: 700; }
+.chk-na  { color: var(--dim); font-size: 9px; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border: 1px solid;
+}
+.badge-tcp  { color: var(--tcp);  border-color: var(--tcp);  background: rgba(56,189,248,0.07); }
+.badge-udp  { color: var(--udp);  border-color: var(--udp);  background: rgba(251,191,36,0.07); }
+.badge-icmp { color: var(--icmp); border-color: var(--icmp); background: rgba(248,113,113,0.07); }
+.badge-other{ color: var(--oth);  border-color: var(--oth);  background: rgba(148,163,184,0.07); }
+
+@keyframes rowflash {
+  0%   { background: rgba(0,255,65,0.18); }
+  100% { background: transparent; }
+}
+.flash { animation: rowflash 0.7s ease-out; }
+
+#panels {
+  flex-shrink: 0;
+  height: 210px;
+  display: flex;
+  border-top: 1px solid var(--gd);
+}
+
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+.panel + .panel { border-left: 1px solid var(--bdr2); }
+
+.panel-hdr {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: var(--dim);
+  border-bottom: 1px solid var(--bdr2);
+  background: var(--bg2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.panel-hdr::before { content: '▸'; color: var(--gf); font-size: 9px; }
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-size: 10.5px;
+  line-height: 1.8;
+  color: var(--mid);
+}
+
+.fsec {
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: var(--gf);
+  margin: 8px 0 3px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--bdr);
+}
+.fsec:first-child { margin-top: 0; }
+.frow { display: flex; gap: 6px; align-items: baseline; line-height: 1.7; }
+.fkey { color: var(--dim); min-width: 110px; flex-shrink: 0; font-size: 10px; }
+.fval { color: var(--g); }
+.fhex { color: var(--gf); font-size: 9px; margin-left: 3px; }
+.fok  { color: var(--ok);  font-size: 9px; font-weight: 700; }
+.fbad { color: var(--bad); font-size: 9px; font-weight: 700; }
+
+#hex-out {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: pre;
+  color: var(--mid);
+}
+.hx-off { color: var(--dim); }
+.hx-byt { color: var(--gd); }
+.hx-asc { color: var(--mid); }
+.ph      { color: var(--dim); font-style: italic; font-size: 10px; }
+
+#statusbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 12px;
+  border-top: 1px solid var(--bdr2);
+  background: var(--bg1);
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 1px;
+}
+#statusbar b { color: var(--mid); }
+.sb-sep { color: var(--bdr2); }
+.sb-push { margin-left: auto; }
+#sb-msg { letter-spacing: 2px; }
+#sb-msg.live { color: var(--gd); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="logo">CENTIPEDE <em>//</em> PACKET SNIFFER</div>
+
+  <div class="topbar-group">
+    <span class="topbar-label">IFACE</span>
+    <span class="topbar-val" id="tb-iface">—</span>
+  </div>
+  <div class="topbar-group">
+    <span class="topbar-label">MODE</span>
+    <span class="topbar-val">PROMISCUOUS</span>
+  </div>
+  <div class="topbar-group" style="gap:8px">
+    <div id="ws-dot"></div>
+    <span id="ws-label">STOPPED</span>
+  </div>
+
+  <div id="clock-block">
+    <div id="clock-time">00:00:00</div>
+    <div id="clock-date">----·--·--</div>
+  </div>
+</div>
+
+<div id="toolbar">
+  <button class="btn primary" id="btn-cap" onclick="startCapture()">
+    <span class="btn-icon">▶</span> CAPTURE
+  </button>
+  <button class="btn danger" id="btn-stop" onclick="stopCapture()">
+    <span class="btn-icon">⏹</span> STOP
+  </button>
+  <button class="btn caution" onclick="clearAll()">
+    <span class="btn-icon">✕</span> CLEAR
+  </button>
+  
+  <div class="filter-group">
+    <span class="filter-label">DISPLAY FILTER:</span>
+    <input type="text" id="filter-input" class="filter-input" placeholder="e.g. tcp.port == 443, ip.src == 192.168.1.1" oninput="onFilterChange()">
+  </div>
+</div>
+
+<div id="stats">
+  <div class="stat">
+    <span class="stat-lbl">CAPTURED</span>
+    <span class="stat-val c-g"   id="sv-total">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">TCP</span>
+    <span class="stat-val c-tcp" id="sv-tcp">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">UDP</span>
+    <span class="stat-val c-udp" id="sv-udp">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">ICMP</span>
+    <span class="stat-val c-icmp" id="sv-icmp">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">OTHER</span>
+    <span class="stat-val c-wht" id="sv-oth">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">KB/S</span>
+    <span class="stat-val c-wht" id="sv-kbs">0.0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">TOTAL BYTES</span>
+    <span class="stat-val c-wht" id="sv-bytes">0</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">ELAPSED</span>
+    <span class="stat-val c-wht" id="sv-elapsed">0s</span>
+  </div>
+</div>
+
+<div id="main">
+
+  <div id="tbl-wrap">
+    <table>
+      <colgroup>
+        <col class="col-no">
+        <col class="col-time">
+        <col class="col-src">
+        <col class="col-dst">
+        <col class="col-prot">
+        <col class="col-sp">
+        <col class="col-dp">
+        <col class="col-len">
+        <col class="col-chk">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>NO.</th>
+          <th>TIME</th>
+          <th>SOURCE IP</th>
+          <th>DEST IP</th>
+          <th>PROTO</th>
+          <th>S.PORT</th>
+          <th>D.PORT</th>
+          <th>LEN</th>
+          <th>CHECKSUM</th>
+        </tr>
+      </thead>
+      <tbody id="pkt-body"></tbody>
+    </table>
+  </div>
+
+  <div id="panels">
+
+    <div class="panel">
+      <div class="panel-hdr">PACKET FIELD DECODER</div>
+      <div class="panel-body" id="field-panel">
+        <span class="ph">→ click a packet row to decode fields</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hdr">HEX DUMP // PAYLOAD</div>
+      <div class="panel-body">
+        <div id="hex-out"><span class="ph">→ click a packet row to view hex dump</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="statusbar">
+  <span>SHOWN: <b id="sb-shown">0</b></span>
+  <span class="sb-sep">/</span>
+  <span>CAPTURED: <b id="sb-cap">0</b></span>
+  <span class="sb-push"></span>
+  <span id="sb-msg">CAPTURE HALTED.</span>
+  <span class="sb-sep">|</span>
+  <span>CENTIPEDE © 2026</span>
+  <span class="sb-sep">|</span>
+  <span>INTERFACE ACTIVE</span>
+</div>
+
+<script>
+let ws       = null;
+let packets  = [];
+let currentFilter = '';
+let cnt      = { total:0, tcp:0, udp:0, icmp:0, other:0, bytes:0 };
+let kbsAccum = 0;
+let startTime= null;
+let seq      = 0;
+
+(function tickClock() {
+  const n = new Date();
+  document.getElementById('clock-time').textContent = n.toTimeString().slice(0,8);
+  document.getElementById('clock-date').textContent = n.toISOString().slice(0,10).replace(/-/g,'·');
+  setTimeout(tickClock, 500);
+})();
+
+setInterval(() => {
+  document.getElementById('sv-kbs').textContent = (kbsAccum / 1024).toFixed(1);
+  kbsAccum = 0;
+}, 1000);
+
+setInterval(() => {
+  if (!startTime) return;
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  document.getElementById('sv-elapsed').textContent =
+    s >= 3600 ? `${Math.floor(s/3600)}h${Math.floor((s%3600)/60)}m`
+    : s >= 60  ? `${Math.floor(s/60)}m${s%60}s`
+    :            `${s}s`;
+}, 500);
+
+function startCapture() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket('ws://localhost:8080');
+  ws.onopen    = () => { setWsStatus(true); if (!startTime) startTime = Date.now(); };
+  ws.onmessage = (e) => { let d; try { d = JSON.parse(e.data); } catch { return; } ingest(d); };
+  ws.onclose   = () => setWsStatus(false);
+  ws.onerror   = () => ws.close();
+}
+
+function stopCapture() {
+  if (ws) ws.close();
+  setWsStatus(false);
+}
+
+function setWsStatus(live) {
+  document.getElementById('ws-dot').className    = live ? 'live' : '';
+  document.getElementById('ws-label').className  = live ? 'live' : '';
+  document.getElementById('ws-label').textContent= live ? 'CONNECTED' : 'STOPPED';
+  const msg = document.getElementById('sb-msg');
+  msg.textContent = live ? 'CAPTURE ACTIVE' : 'CAPTURE HALTED.';
+  msg.className   = live ? 'live' : '';
+}
+
+function ingest(d) {
+  seq++;
+  if (!startTime) startTime = Date.now();
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(3);
+
+  const proto = (d.protocol || 'OTHER').toUpperCase();
+  const size  = parseInt(d.size) || 0;
+
+  cnt.total++;
+  cnt.bytes += size;
+  kbsAccum  += size;
+
+  if (proto === 'TCP')       cnt.tcp++;
+  else if (proto === 'UDP')  cnt.udp++;
+  else if (proto === 'ICMP') cnt.icmp++;
+  else                       cnt.other++;
+
+  if (d.iface && document.getElementById('tb-iface').textContent === '—')
+    document.getElementById('tb-iface').textContent = d.iface;
+
+  const pkt = {
+    seq, elapsed,
+    src:          d.src       || '—',
+    dst:          d.dest      || '—',
+    src_hex:      d.src_hex   || '',
+    dst_hex:      d.dst_hex   || '',
+    proto,
+    src_port:     d.src_port  !== undefined ? d.src_port  : null,
+    dst_port:     d.dest_port !== undefined ? d.dest_port : (d.port !== undefined ? d.port : null),
+    size,
+    ttl:          d.ttl,
+    iface:        d.iface     || '—',
+    ip_chk:       d.ip_checksum       || '—',
+    ip_chk_ok:    d.ip_checksum_valid,
+    chk:          d.checksum          || '—',
+    chk_ok:       d.checksum_valid,
+    seq_num:      d.seq,
+    seq_hex:      d.seq_hex   || '',
+    ack_num:      d.ack,
+    ack_hex:      d.ack_hex   || '',
+    payload_size: d.payload_size || 0,
+    payload:      d.payload   || '',
+    raw: d
+  };
+
+  packets.unshift(pkt);
+  if (packets.length > 5000) packets.pop(); // Increased memory buffer to 5000
+
+  document.getElementById('sv-total').textContent = cnt.total;
+  document.getElementById('sv-tcp').textContent   = cnt.tcp;
+  document.getElementById('sv-udp').textContent   = cnt.udp;
+  document.getElementById('sv-icmp').textContent  = cnt.icmp;
+  document.getElementById('sv-oth').textContent   = cnt.other;
+  document.getElementById('sv-bytes').textContent = cnt.bytes > 1048576
+    ? (cnt.bytes/1048576).toFixed(1)+'M'
+    : cnt.bytes > 1024 ? (cnt.bytes/1024).toFixed(1)+'K'
+    : cnt.bytes;
+  document.getElementById('sb-cap').textContent   = cnt.total;
+
+  renderTable();
+}
+
+function onFilterChange() {
+  currentFilter = document.getElementById('filter-input').value;
+  renderTable();
+}
+
+function matchFilter(pkt, filterStr) {
+  if (!filterStr || filterStr.trim() === '') return true;
+  
+  const f = filterStr.toLowerCase().trim();
+
+  // Evaluate explicit Wireshark equalities (e.g., ip.addr == 192.168.1.1)
+  if (f.includes('==')) {
+    const parts = f.split('==').map(s => s.trim());
+    if (parts.length === 2) {
+      const k = parts[0];
+      const v = parts[1];
+      
+      if (k === 'ip.addr') return pkt.src === v || pkt.dst === v;
+      if (k === 'ip.src')  return pkt.src === v;
+      if (k === 'ip.dst')  return pkt.dst === v;
+      if (k === 'tcp.port') return pkt.proto === 'TCP' && (String(pkt.src_port) === v || String(pkt.dst_port) === v);
+      if (k === 'udp.port') return pkt.proto === 'UDP' && (String(pkt.src_port) === v || String(pkt.dst_port) === v);
+      return false; // Strict match failed
+    }
+  }
+
+  // Quick protocol match
+  if (f === 'tcp') return pkt.proto === 'TCP';
+  if (f === 'udp') return pkt.proto === 'UDP';
+  if (f === 'icmp') return pkt.proto === 'ICMP';
+
+  // Generic search (matches IPs, partial IPs, etc)
+  return pkt.src.includes(f) || pkt.dst.includes(f) || pkt.proto.toLowerCase().includes(f);
+}
+
+function renderTable() {
+  const tbody = document.getElementById('pkt-body');
+  const frag  = document.createDocumentFragment();
+  const MAX   = 1000; // Visual limit set to 1000 to prevent browser freezing
+
+  // Apply the active filter to all packets
+  const filteredPackets = packets.filter(p => matchFilter(p, currentFilter));
+
+  filteredPackets.slice(0, MAX).forEach((p, i) => {
+    const tr = document.createElement('tr');
+    if (i === 0 && currentFilter === '') tr.classList.add('flash'); // Only flash new items if unfiltered
+    tr.dataset.seq = p.seq;
+
+    let chkHtml = '<span class="chk-na">—</span>';
+    if (p.chk_ok === true)  chkHtml = `<span class="chk-ok">✓ ${p.chk}</span>`;
+    if (p.chk_ok === false) chkHtml = `<span class="chk-bad">✗ ${p.chk}</span>`;
+
+    const bclass = `badge-${p.proto.toLowerCase()}`;
+
+    tr.innerHTML =
+      `<td class="td-no">${String(p.seq).padStart(4,'0')}</td>` +
+      `<td class="td-time">${p.elapsed}</td>` +
+      `<td class="td-src">${p.src}</td>` +
+      `<td class="td-dst">${p.dst}</td>` +
+      `<td><span class="badge ${bclass}">${p.proto}</span></td>` +
+      `<td class="td-port">${p.src_port !== null ? p.src_port : '—'}</td>` +
+      `<td class="td-port">${p.dst_port !== null ? p.dst_port : '—'}</td>` +
+      `<td class="td-len">${p.size}</td>` +
+      `<td>${chkHtml}</td>`;
+
+    tr.onclick = () => selectPkt(p, tr);
+    frag.appendChild(tr);
+  });
+
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+  
+  // Update UI count
+  document.getElementById('sb-shown').textContent = filteredPackets.length;
+}
+
+function selectPkt(p, tr) {
+  document.querySelectorAll('#pkt-body tr').forEach(r => r.classList.remove('sel'));
+  tr.classList.add('sel');
+  renderFields(p);
+  renderHex(p.payload, p.payload_size);
+}
+
+function renderFields(p) {
+  let h = '';
+
+  h += `<div class="fsec">IPv4</div>`;
+  h += frow('Src IP',      p.src,  p.src_hex);
+  h += frow('Dst IP',      p.dst,  p.dst_hex);
+  h += frow('TTL',         p.ttl !== undefined ? p.ttl : '—', '');
+  h += frow('IP Checksum', p.ip_chk, '',
+    p.ip_chk_ok === true  ? '<span class="fok">VALID</span>' :
+    p.ip_chk_ok === false ? '<span class="fbad">INVALID</span>' : '');
+  h += frow('Total Size',  p.size + ' bytes', '');
+  h += frow('Interface',   p.iface, '');
+
+  if (p.proto === 'TCP') {
+    h += `<div class="fsec">TCP</div>`;
+    h += frow('Src Port', p.src_port !== null ? p.src_port : '—', '');
+    h += frow('Dst Port', p.dst_port !== null ? p.dst_port : '—', '');
+    h += frow('Seq Num',  p.seq_num !== undefined ? p.seq_num : '—', p.seq_hex);
+    h += frow('Ack Num',  p.ack_num !== undefined ? p.ack_num : '—', p.ack_hex);
+    h += frow('Checksum', p.chk, '',
+      p.chk_ok === true  ? '<span class="fok">VALID</span>' :
+      p.chk_ok === false ? '<span class="fbad">INVALID — POSSIBLE TAMPERING</span>' : '');
+  } else if (p.proto === 'UDP') {
+    h += `<div class="fsec">UDP</div>`;
+    h += frow('Src Port', p.src_port !== null ? p.src_port : '—', '');
+    h += frow('Dst Port', p.dst_port !== null ? p.dst_port : '—', '');
+    h += frow('Checksum', p.chk, '',
+      p.chk_ok === true  ? '<span class="fok">VALID</span>' :
+      p.chk_ok === false ? '<span class="fbad">INVALID</span>' :
+                           '<span class="fok">DISABLED (0x0000)</span>');
+  } else if (p.proto === 'ICMP') {
+    h += `<div class="fsec">ICMP</div>`;
+    h += frow('Protocol #', p.raw?.icmp_proto || '1', '');
+  }
+
+  h += `<div class="fsec">PAYLOAD</div>`;
+  h += frow('Payload Size', (p.payload_size || 0) + ' bytes', '');
+  h += frow('Has Payload',  p.payload && p.payload.trim() ? 'YES' : 'NO', '');
+
+  document.getElementById('field-panel').innerHTML = h;
+}
+
+function frow(key, val, hex, extra) {
+  return `<div class="frow">
+    <span class="fkey">${key}</span>
+    <span class="fval">${val}</span>
+    ${hex   ? `<span class="fhex">(${hex})</span>` : ''}
+    ${extra ? extra : ''}
+  </div>`;
+}
+
+function renderHex(payload, payloadSize) {
+  const el = document.getElementById('hex-out');
+  if (!payload || payload.trim() === '') {
+    el.innerHTML = `<span class="ph">No payload data. (${payloadSize || 0} bytes)</span>`;
+    return;
+  }
+  const lines = payload.split('\\n').filter(l => l.trim());
+  let out = '';
+  lines.forEach((line, idx) => {
+    const offset = String(idx * 16).padStart(4, '0');
+    const m = line.match(/^((?:[0-9a-fA-F]{2}\s+)+)\s{2,}(.*)$/);
+    if (m) {
+      out += `<span class="hx-off">${offset}  </span>` +
+             `<span class="hx-byt">${m[1].trimEnd()}</span>` +
+             `  <span class="hx-asc">${m[2]}</span>\n`;
+    } else {
+      out += `<span class="hx-byt">${line}</span>\n`;
+    }
+  });
+  el.innerHTML = out || `<span class="ph">Unable to parse payload.</span>`;
+}
+
+function clearAll() {
+  packets = [];
+  cnt = { total:0, tcp:0, udp:0, icmp:0, other:0, bytes:0 };
+  seq = 0; startTime = null; kbsAccum = 0;
+
+  ['sv-total','sv-tcp','sv-udp','sv-icmp','sv-oth',
+   'sb-shown','sb-cap'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '0';
+  });
+  document.getElementById('sv-kbs').textContent     = '0.0';
+  document.getElementById('sv-bytes').textContent   = '0';
+  document.getElementById('sv-elapsed').textContent = '0s';
+  document.getElementById('tb-iface').textContent   = '—';
+  document.getElementById('pkt-body').innerHTML     = '';
+  document.getElementById('field-panel').innerHTML  = '<span class="ph">→ click a packet row to decode fields</span>';
+  document.getElementById('hex-out').innerHTML      = '<span class="ph">→ click a packet row to view hex dump</span>';
+}
+
+startCapture();
+</script>
+</body>
+</html>
