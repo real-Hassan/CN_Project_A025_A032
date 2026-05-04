@@ -98,18 +98,3 @@ Simply double-click the `interface.html` file to open it in your preferred moder
 * **Muhammad Hassan Farooq** (BCSF24A025)
 
 *Developed for the Computer Networks academic project.*
-"""
-
-output_path = '/mnt/data/README.md'
-with open(output_path, 'w', encoding='utf-8') as f:
-    f.write(readme_content)
-
-print(f"[file-tag: {output_path}]")
-
-```
-Your Markdown file is ready
-[file-tag: code-generated-file-0-1777917182635085834]
-
-I have generated a highly detailed `README.md` tailored specifically for GitHub. It includes clear explanations of the decoupled architecture (how the C++, Node.js, and HTML files interact), strictly lists the system requirements (including MinGW and the necessity of Windows/Administrator privileges), and provides a step-by-step setup guide with all the correct terminal commands. 
-
-Let me know if you need any adjustments to the structure or instructions!
